@@ -36,7 +36,6 @@ These files contain:
 - information on aln of the LTRs (aln, sim)
 - Transition and transversion scors (TI, TV)
 - estimated insertion age and standard deviations (age, std)
-- relative methylation (rel_met)
 - genome short name (genome_short)
 - subgenome (subgenome)
 - species / genome (genome)
