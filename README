@@ -1,1 +1,63 @@
+-------------> TE sequence fasta datasets 
 
+contains:
+Consensus sequences in fasta format for the indiviual TE subfmailies described in the paper
+
+TEpop_RLG_Aurora_flat
+TEpop_RLG_Ava_flat
+TEpop_RLG_Beth_flat
+TEpop_RLG_Cereba_flat
+
+These files contain:
+Full collection of full-length TE copies identfied with the TEpop pipeline in fasta format
+The description line contains:
+- Full name of the individual TE copy (contains chromosome name)
+- Start and end position on the respective chromosome
+- Transcriptional orientation (F/R)
+- Sequence of the target site duplication (TSD, usually 5 identical bp flanking the TE, but can contain mismatches)
+- Subfamily designation
+
+
+-------------> Insertion ages TE copies
+
+contains:
+The tables including the estimated insertion ages of individual TE copies
+
+TEpop flat files for the indiviual TE copies:
+
+insertion_age_RLG_Aurora
+insertion_age_RLG_Ava
+insertion_age_RLG_Beth
+insertion_age_RLG_Cereba
+
+These files contain: 
+- name of the TE copy (TE)
+- information on aln of the LTRs (aln, sim)
+- Transition and transversion scors (TI, TV)
+- estimated insertion age and standard deviations (age, std)
+- relative methylation (rel_met)
+- genome short name (genome_short)
+- subgenome (subgenome)
+- species / genome (genome)
+
+
+-------------> Phylogeneitc trees of individual TE copies
+
+contains:
+Tree files produced using RAxML with mapped bootstrap support values for the groups described in the paper
+
+Ava_all_map_bootstraps.raxml.support
+Ava_G1_map_bootstraps.raxml.support
+Ava_G1_1_map_bootstraps.raxml.support
+Ava_G2_map_bootstraps.raxml.support
+Ava_G3_map_bootstraps.raxml.support
+
+
+-------------> Protein consensus tree CRM Poaceae
+
+contains:
+Data on the protein consensus tree presented in the paper
+
+CRMs_across_Poaceae_cut_flat (includes RT, RH and INT protein domains; cut from aln)
+CRMs_across_Poaceae_cut_flat.aln
+CRMs_across_Poaceae_cut_flat.tre
