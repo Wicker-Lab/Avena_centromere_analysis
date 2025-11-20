@@ -61,3 +61,10 @@ Data on the protein consensus tree presented in the paper
 CRMs_across_Poaceae_cut_flat (includes RT, RH and INT protein domains; cut from aln)
 CRMs_across_Poaceae_cut_flat.aln
 CRMs_across_Poaceae_cut_flat.tre
+
+
+-------------> Subset of TREP database + new consensus
+contains:
+A Poaceae specific subset of the TREP database including newly produced consensus sequences
+
+POA_TEdb_subset_TREP
