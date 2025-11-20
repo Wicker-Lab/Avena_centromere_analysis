@@ -1,7 +1,8 @@
 README
+
 -------------> TE sequence fasta datasets 
 
-contains:
+TE_consensus_sequences contains:
 Consensus sequences in fasta format for the indiviual TE subfmailies described in the paper
 
 TEpop_RLG_Aurora_flat
