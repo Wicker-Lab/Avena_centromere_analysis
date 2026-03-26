@@ -1,0 +1,303 @@
+#!/usr/bin/perl
+
+
+use lib '/home/wicker/data/WICKERsoft/';
+#use Biomodule;
+use GD;
+
+
+if (@ARGV < 4) {
+	print "1.arg = age distribution\n";
+	print "2.arg = family name (e.g. Ava)\n";
+	print "3.arg = max age display\n";
+	print "4.arg = species (e.g. Asat)\n";
+	print "5.arg = -t to exclude header\n";
+	exit;
+	}
+
+
+
+
+
+$fam = $ARGV[1];
+$max_age_set = $ARGV[2];
+$spe = $ARGV[3];
+
+$out2 = "eval_SNP_x_age_$fam.png";
+
+
+open (IN, "<$ARGV[0]");
+
+$count =0;
+@all = ();
+
+# collect all values
+$first =0;
+if ($ARGV[4] eq '-t') {
+	$first =1;
+	}
+
+$max_SNP = 0;
+$max_age = 0;
+
+while (<IN>) {
+
+	($dat) = /^(\S+$spe\S+$fam.+)/;
+	if (($dat) && ($first ==0)) {
+		$dat =~ s/\s+/ /g;
+		@data = split(' ',$dat);
+		$ti = $data[3];
+		$tv = $data[4];
+		$age = $data[5];
+		$std = $data[6];
+		$sum = $ti+$tv;
+
+		if ($max_SNP < $sum) {
+			$max_SNP = $sum;
+			}
+		if ($max_age < $age) {
+                        $max_age = $age;
+                        }	
+
+		$all[$count][0] = $sum;
+		$all[$count][1] = $age;
+		$all[$count][2] = $std;
+		$count++;
+		}
+
+	$first = 0;	
+	}
+
+
+# do basic statistics
+
+print "values: $count\n";
+print "max_SNP = $max_SNP\n";
+print "max_age = $max_age\n";
+
+# calc cutoff for SNPs to display
+$ratio = $max_age/$max_age_set;
+$max_SNP_set = int($max_SNP/$ratio); 
+$max_SNP = $max_SNP_set;
+#$max_SNP = 120;
+
+$max_age = $max_age_set;
+$show_age = ($max_age+($max_age/10));
+
+# write distribution into png ++++++++++++++++++++++
+
+# make frame for plot 
+$wide = 400;
+$high = 270;
+
+if ($ARGV[4] =~ /-s/) {
+	$wide = 350;
+	$high = 200;
+	}
+
+$x_zoom = $max_SNP/$wide;
+$y_zoom = $max_age/$high;
+
+$x_base = 50;
+$y_base = 50;
+
+print "$wide x $high\n";
+print "zoom_x = $x_zoom\n";
+print "zoom_y = $y_zoom\n";
+
+
+# create a new image
+$img_x = $wide +2*$x_base;
+$img_y = $high +2*$y_base;
+$img = new GD::Image($img_x,$img_y);
+
+# allocate some colors
+$white = $img->colorAllocate(255,255,255);
+$black = $img->colorAllocate(0,0,0);
+$red = $img->colorAllocate(255,0,0);
+$blue = $img->colorAllocate(0,0,255);
+$green = $img->colorAllocate(0,255,0);
+$gray = $img->colorAllocate(150,150,150);
+$beige = $img->colorAllocate(255,210,100);
+
+# draw frame for dotplot
+$x1 = $x_base;
+$x2 = $x_base+$wide;
+$y1 = $y_base;
+$y2 = $y_base+$high;
+$img->rectangle($x1,$y1,$x2,$y2,$black);
+
+# draw labels
+$midx = int($wide/2);
+$midy = int($high/2);
+
+# x-axis
+$x = $x_base+100;
+$y = $y_base+$high+22;
+$label = "SNPs in LTR";
+#$label = "Insertion age range [Myr]";
+#$label = "Distance to closest QuinCent motif";
+#$label = "GC content per 500 bp window [%]";
+
+$img->string(gdLargeFont,$x,$y,$label,$black);
+
+#y-axis
+$x = $x_base-50;
+$y = $y_base+$high-30;
+$label = "Insertion age+-STD";
+#$label = "TE count per range";
+#$label = "Windows per range";
+$img->stringUp(gdLargeFont,$x,$y,$label,$black);
+
+# title
+$x = $x_base;
+$y = $y_base-30;
+$label = "Insertion age esitmates $fam";
+$img->string(gdLargeFont,$x,$y-12,$label,$black);
+$label = "n=$count";
+$img->string(gdLargeFont,$x,$y+7,$label,$black);
+
+# draw polt and write outfile
+$max_size = @size_distr;
+#$max_size = $max/$class;
+$class_beg = 0;
+
+
+# draw x scale
+$step = 20;
+print "x-max = $max_SNP;$i+=$step\n";
+$count_pos =0;
+for($i=0;$i<=$max_SNP;$i+=$step) {
+
+	$x1 = $x_base+int($i/$x_zoom);
+	$y1 = $y_base+$high;
+	$y2 = $y1+3;
+	$y3 = $y2+2;
+
+	$img->line($x1,$y1,$x1,$y2,$black);
+	$img->string(gdSmallFont,$x1,$y3,$i,$black);
+	}
+
+
+# draw y scale
+$step = 0.2;
+print "y-max = $max_age;$i+=$step\n";
+$count_pos =0;
+for($i=0;$i<=$max_age;$i+=$step) {
+
+        $y1 = $y_base+$high-int($i/$y_zoom);
+        $x1 = $x_base;
+        $x2 = $x1-3;
+        $x3 = $x2-20;
+
+	$lab = sprintf("%.01f",$i);
+
+        $img->line($x1,$y1,$x2,$y1,$black);
+        $img->string(gdSmallFont,$x3,$y1-8,$lab,$black);
+        }
+
+
+
+
+# first display STD
+
+for($i=0;$i<$count;$i++) {
+
+	# SNPs on x-axis
+	$snp = $all[$i][0];
+        $x1 = $x_base+int($snp/$x_zoom);
+
+	# age and std on y-axis
+	$age = $all[$i][1];
+	$std = $all[$i][2];
+
+	# calc std range 
+	$stdh = $age+$std;
+	$stdl = $age-$std;
+
+	if ($stdh > $max_age) {
+		$stdh = $max_age;
+		}
+
+        $y1 = $y_base+$high-int($stdh/$y_zoom);
+	$y2 = $y_base+$high-int($stdl/$y_zoom);
+
+	print "$i\t$snp\t$age\t$std\n";
+
+	if ($snp < $max_SNP) {
+
+		$img->line($x1,$y1,$x1,$y2,$gray);
+		}
+	#$img->stringUp(gdSmallFont,$x1,$y3,$val,$black);
+	#$count_pos+=$step;
+        }
+
+
+# then display age
+
+for($i=0;$i<$count;$i++) {
+
+        # SNPs on x-axis
+        $snp = $all[$i][0];
+        $x1 = $x_base+int($snp/$x_zoom);
+	$x2 = $x1+1;
+
+        # age and std on y-axis
+        $age = $all[$i][1];
+        $std = $all[$i][2];
+
+        $y1 = $y_base+$high-int($age/$y_zoom);
+        $y2 = $y1+1;
+
+        print "$i\t$snp\t$age\t$std\n";
+
+	if (($snp < $max_SNP) && ($age < $max_age)) {
+        	$img->filledRectangle($x1,$y1,$x2,$y2,$red);
+		}
+		#$img->stringUp(gdSmallFont,$x1,$y3,$val,$black);
+        #$count_pos+=$step;
+        }
+
+
+
+#draw y scale
+sub no_use {
+$step2 =1;
+if ($max_y >= 10) {
+	$step2 = int($max_y/10);
+	}
+print "$max_y;$i+=$step2\n";
+for($i=0;$i<=$max_y;$i+=$step2) {
+        $y1 = $y_base+$high-int($i/$zoom_y);
+        $x1 = $x_base;
+        $x2 = $x_base-3;
+        $img->line($x1,$y1,$x2,$y1,$black);
+        $img->string(gdSmallFont,$x_base-30,$y1-5,$i,$black);
+        }
+
+}
+
+close (OUT);
+
+print "wrote $out2\n\n";
+
+# convert into png data
+open $png, '>', $out2 or die;
+binmode $png;
+print $png $img->png;
+
+# open image
+print "opening image, please wait\n";
+
+`eog $out2`;
+
+
+
+
+
+print "Thank you for using WICKERsoft supersoftware\n\n";
+
+
+
+
+

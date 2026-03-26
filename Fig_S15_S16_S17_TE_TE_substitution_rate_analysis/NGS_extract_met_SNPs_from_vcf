@@ -1,0 +1,113 @@
+#!/usr/bin/perl
+
+
+if (@ARGV <1) {
+	print "1.= selected.vcf prduced with TEpop pipeline\n";
+	exit;
+	}
+
+
+# collect data 
+open (IN, "<$ARGV[0]");
+@all = ();
+@ID = ();
+$SNP_count =0;
+$time =0;
+%acc_fill = ();
+%ID_fill = ();
+$count_met = 0;
+while (<IN>){
+
+	# collect names of individual from header 
+	($dat) = /^#(\S.+)$/;
+        if ($dat) {
+                $dat =~ s/\s+/ /g;
+                @data = split(' ',$dat);
+
+		# get species name and assign color
+		for($i=9;$i<@data;$i++) {
+			$ID = $data[$i];
+			($spec) = ($ID =~ /^[^_]+_([^_]+)_/);
+	
+			unless($spec ~~ @acc) {
+                                push(@acc,$spec);
+                                print "Accession\t$spec\t$fill\n";
+				$acc_count++;
+				$acc_fill{$spec} = $color2[$acc_count];
+
+                                }
+
+			$fill = $color2[$acc_count];
+			$ID_fill{$ID} = $fill;
+			$ID_spec{$ID} = $spec;
+			push(@ID,$ID);
+			}	
+
+
+		}
+
+
+	# collect data  3D array
+        ($dat) = /^([^#].+)$/;
+        if (($dat)) {
+		$dat =~ s/\s+/ /g;
+		@data = split(' ',$dat);
+
+		$chr = $data[0];
+		$pos = $data[1];
+		$ref = $data[3];
+		$var = $data[4];
+
+		# flag C->T and G->A
+		$flag = 0;
+		if ((($ref eq 'C') && ($var eq 'T')) || (($ref eq 'G') && ($var eq 'A'))) {
+			$flag = 1;
+			$count_met++;
+			}
+
+		$ID_count =0;
+		for($i=9;$i<@data;$i++) {
+		
+			($GT) = ($data[$i] =~ /^(.)/);
+			if ($GT =~ /\./) {
+				$GT = 0;
+				} else{
+				$GT++;
+				}
+
+			$fill = $color[$GT];
+
+			$all[$SNP_count][$ID_count][0] = $pos;	
+			$all[$SNP_count][$ID_count][1] = $GT;
+			$all[$SNP_count][$ID_count][2] = $fill;
+			$all[$SNP_count][$ID_count][3] = $ref;
+			$all[$SNP_count][$ID_count][4] = $var;
+			$all[$SNP_count][$ID_count][5] = $flag;	
+
+			$ID_count++;
+
+
+                        }
+
+		$SNP_count++;
+		$time =0;
+	
+		}
+
+	$time++;
+
+        }
+
+$count_ID = @ID;
+
+$rel_met = $count_met/$SNP_count*100;
+$rel_met = sprintf("%.02f",$rel_met);
+
+print "\n";
+print "sequences:  $count_ID\n\n";
+print "acessions:  $acc_count\n";
+print "total SNPs: $SNP_count\n";
+print "C -> T:     $count_met ($rel_met%)\n";
+
+
+
