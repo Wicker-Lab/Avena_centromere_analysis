@@ -1,0 +1,17 @@
+
+all_INT_v4  
+contains Integrase domains from Cereba and Ava homologs
+
+
+all_INT_v4.aln  
+output from clustalw run at default parameters
+
+
+
+all_INT_v4.nxs.con.tre
+tree file produce with MrBayes
+run for 25000 generations with a burn-in value of 25% until the average standard deviation of split frequencies decreased to under 0.01
+
+the tree in Fig S19 was visualized with figtree
+
+
