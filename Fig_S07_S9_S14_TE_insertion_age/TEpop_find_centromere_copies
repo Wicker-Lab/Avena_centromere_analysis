@@ -1,0 +1,84 @@
+#!/usr/bin/perl
+
+if (@ARGV < 2) {
+	print "1.= centromere_pos table\n";
+	print "2.= age distribution file (e.g. age_distribution_clean_filtered_all)\n";
+	exit;
+	}
+
+
+
+%cent = 0;
+$count =0;
+
+# start log file 
+$out = "TEpop_centrormere_dist_all_cent_v3";
+open(OUT,">$out");
+print OUT "TE\tfamily\tchr\tchr_ID\tpos\tage\trem\tgroup\tflag\tgenome\n";
+
+
+
+# collect centromere positions in hash
+print "centromere positions\n";
+open(IN,"$ARGV[0]");
+while (<IN>) {
+	($chr,$chr_ID,$be,$en) = /^(chr(\S+))\s+(\S+)\s+(\S+)/;
+	if ($chr) {
+		$be *=1000;
+		$en *=1000;
+		$len = int($en-$be);
+		$cent_ID{$chr} = $chr_ID;
+		$cent_be{$chr} = $be;
+		$cent_en{$chr} = $en;
+
+		print "$chr\t$chr_ID\t$be\t$en\t$len\n";
+		$count++;
+		}
+
+	}
+
+
+# loop over age distribution of all TEs +++++++++++++++++++
+open(IN,"$ARGV[1]");
+while (<IN>) {
+
+	($p) = /^(\S+_Asat.+)$/;
+        if ($p) {
+	
+		$count++;
+                @data = split('\t',$p);
+		
+		# extract family name, chr, kb position, subgenome etc
+		($code,$spe,$fam,$chr,$cp) = ($data[0] =~ /^(...)_([^_]+)_(\S+)_(chr\S+)-(\d+)_TSD/);
+		$age = $data[5];
+		
+
+		# check if currect copy lies in predicted centromere
+		$rem = "OUT";
+		$be = $cent_be{$chr};
+		$en = $cent_en{$chr};
+		$ID = $cent_ID{$chr};
+
+		if (($cp >= $be) && ($cp <$en)){
+			$rem = "IN";
+			}
+
+		# make some entries used later in R	
+		($genome) = ($chr =~ /\d+([A-Za-z]+)/);
+		$fa = "$code\_$fam";
+		$set = "$fa\_$rem";
+		$flag = "$set\_$genome";
+
+		# only process centromere-specific TEs, exclude RLG_Aurora
+		unless ($fam =~ /Aurora/) {
+			print OUT "$data[0]\t$fam\t$chr\t$ID\t$cp\t$age\t$rem\t$set\t$flag\t$genome\n";
+			print "$data[0]\t$chr\t$ID\t$cp\t$age\t$rem\t$set\t$flag\t$genome\n";
+			}
+		}
+
+	}
+
+close(IN);
+
+print "wrote $out\t$count\n";
+
