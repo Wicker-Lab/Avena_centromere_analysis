@@ -1,0 +1,61 @@
+#!/usr/bin/perl
+
+# ***** assemble 02.12.19
+# cut one piece of a large seqeunce
+# 1. argument = sequence 1
+# 2. argument = sequence 1
+
+use lib '/home/wicker/data/WICKERsoft/';
+use Biomodule;
+
+$infile1 = $ARGV[0];
+
+$outfile1 = $ARGV[1];
+
+if ($outfile1) {
+	$out = $outfile1;
+	} else {
+	$out = "${infile1}\_seg";
+	}
+
+($dna1) = &pure_sequence($infile1);
+
+$size1 = length($dna1);
+
+# define fragment on sequence 1
+
+print "$infile1, begin (< 1 >)? ";
+chomp ($beg1 = <STDIN>);
+if ($beg1 eq '') { $beg1 = 1; }
+
+print "$infile1, end (< $size1 >)? ";
+chomp ($end1 = <STDIN>);
+if ($end1 eq '') { $end1 = $size1; }
+
+print "$infile1, reverse (< n >)? ";
+chomp ($sense1 = <STDIN>);
+
+# create fragment sequence
+
+$diff1 = $end1 - $beg1 +1;
+
+$seq = substr($dna1, ($beg1 -1), $diff1);
+
+$ori = "for";
+if ($sense1 eq 'y') { 
+	($rev) = &invert_sequence($seq);
+	$seq = $rev;
+	$ori = "rev";
+	}
+
+open (OUT, ">$out");
+
+print OUT ">$out $infile1 $beg1-$end1 $ori\n";
+
+($fasta) = &mk_fasta($seq);
+print OUT "$fasta\n";
+
+close (OUT);
+
+
+print "\noutput is written to $out\n\nthank you for using WICKERsoft supersoftware\n\n";

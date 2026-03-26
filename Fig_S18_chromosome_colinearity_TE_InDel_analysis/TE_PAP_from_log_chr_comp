@@ -1,0 +1,445 @@
+#!/usr/bin/perl
+
+use lib '/home/wicker/data/WICKERsoft/';
+use Biomodule;
+
+
+if(@ARGV < 4) {
+	print "1.= log from blast_compare_chromosome\n";
+	print "2.= min insertion size\n" ;
+	print "3.= max insertion size\n";
+	print "4.= max dist (cutoff) for non-colinear hits\n";
+	print "5.= -v for verbose output\n";
+	exit;
+	}
+
+
+$min = $ARGV[1];
+$max = $ARGV[2];
+$max_dist = $ARGV[3];
+
+
+# settings for name formats
+$ext = "INS";
+$pap_count = 0;
+
+$flank = 4000;
+$min_ins = $min;
+$max_delta1 = 3000;
+
+$ver = 0;
+if ($ARGV[4] eq '-v') {
+	$ver = 1;
+	}
+
+$first = 1;
+
+# collect all pos in 2D array
+open (IN, "<$ARGV[0]");
+while (<IN>){
+
+	($p) = /^(\S.+)$/;
+	if (($p) && ($first ==0)) {
+
+		$p =~ s/\s+/ /g;
+		@data = split(' ',$p);
+
+		$n1 = $data[1];
+		$n2 = $data[2];
+		$sim = $data[4];
+		$ori = $data[5];
+		$flag = 1;
+
+		$sim =~ s/%//;
+
+		$all[$count][0] = $n1;
+		$all[$count][1] = $n2;
+		$all[$count][2] = $sim;
+		$all[$count][3] = $ori;
+		$all[$count][4] = $flag;
+
+		$count++;
+		}
+
+	# get info from header
+	($ch1,$l1,$ch2,$l2) = /CHR1=(\S+)\s+LEN1=(\d+)\s+CHR2=(\S+)\s+LEN2=(\d+)/;	
+	if (($ch1) && ($first ==1)) {
+		$chr1 = $ch1;
+		$len1 = $l1;
+		$chr2 = $ch2;
+                $len2 = $l2;
+		($dna1) = &pure_sequence($chr1);
+		($dna2) = &pure_sequence($chr2);
+		print "$chr1\t$len1\n";
+		print "$chr2\t$len2\n";
+		}
+
+	$first =0;	
+
+	}
+
+print "total:\t$count\n";
+
+$ann = "annotation_insertions_$chr2";
+open(ANN,">$ann");
+
+
+
+# loop thru data and flag non colinear hits
+# .. by making running avg over 30 values and flagging those that are way off
+$window = 30;
+for($i=0;$i<($count-$window);$i++) {
+
+	# flag generally all hits that are reverse
+        if ($all[$i][3] eq 'rev') {
+                $all[$i][4] = 0;
+                }
+	
+
+	# display current line just for control
+        $line = $i;
+        for($j=0;$j<5;$j++) {
+                $line .= "\t$j=$all[$i][$j]";
+                }
+	#print "$line ----\n";
+
+
+        # collect values from chr 2 for window
+        @win = ();
+        $c = 0;
+        for($j=$i;$j<($i+$window);$j++) {
+                $win[$c][1] = $all[$j][1];
+                $win[$c][0] = $j;
+		$win[$c][2] = '';
+                $c++;
+                }
+
+
+        # calc median position of pos2 in window
+        @sort = sort{$a->[1] <=> $b->[1]}(@win);
+        @win = @sort;
+
+        $mid = int($window/2);
+        $median = int($win[$mid][1]/1000);
+
+        # flag all hits that are far off the median
+        for($j=0;$j<$c;$j++) {
+
+                $rem = '';
+
+                $delta = abs($win[$j][1]-$median*1000);
+
+                # if value is far from median, flad the entry
+                if ($delta > $max_dist) {
+                        $val = $win[$j][0];
+                        $all[$val][4] = 0;
+                        $rem = "*** ";
+			$win[$j][2] = "*** ";
+                        }
+
+                if ($j==$mid) {
+                        $rem .= $median;
+                        }
+		if ($ver ==1) {
+			print "$i\t$j\t$win[$j][0]\t$win[$j][1]\t$rem\n";
+			}
+                }
+
+
+	# show verbose output, if requested	
+	if ($ver ==1) {	
+		print "\nreorder:\n";	
+		# show correct order again
+		for($j=$i;$j<($i+$window);$j++) {
+		
+			$line = "$i\t$j";
+
+			for($k=0;$k<6;$k++) {
+				$line .= "\t$all[$j][$k]";
+				}
+			print "$line\n";
+			}
+		}	
+
+
+        }
+
+
+
+# make new array only with clean hits
+@clean = ();
+$count2 = 0;
+
+for($i=0;$i<$count;$i++) {
+
+	if ($all[$i][4] ==1) {
+		for($j=0;$j<5;$j++) {
+			$clean[$count2][$j] = $all[$i][$j];
+			}
+		$count2++;
+		}	
+	}
+
+print "clean: $count2 entries\n";
+
+@all = @clean;
+
+
+# display clean hits just for control, if wanted
+if ($ARGV[4] eq '-v2') {
+for($i=0;$i<$count2;$i++) {
+        # display current line just for control
+        $line = $i;
+        for($j=0;$j<5;$j++) {
+                $line .= "\t$j=$all[$i][$j]";
+                }
+        print "$line\n";
+	}
+}
+
+
+
+
+# loop thru array and identify insertions in seq 2
+for($i=0;$i<$count2;$i++) {	
+	
+	$delta1 = $all[$i+1][0]-$all[$i][0];
+	$delta2 = $all[$i+1][1]-$all[$i][1];
+
+	$line = $i;
+	for($d=0;$d<4;$d++) {
+		$line .= "\t$all[$i][$d]";	
+		}
+
+	#print "$line\t$delta1\t$delta2\n";	
+
+	#if ($all[$i][1] > 3000000) {
+
+	# identify large jumps in seq2, while jump in seq1 is small
+	if (($delta2 >= $min) && ($delta2 <= $max) && ($delta1 < $max_delta1)) {
+
+		print "\nCANDIDATE: $all[$i][0]\t$all[$i][1]\tDELTA: delta1= $delta1\tdelta2= $delta2\n";
+
+		# look at local hits for further verification
+		# ... check if there is a jump back again within the next 5 entries 
+		# ... (i.e. blast hits between adjacent tandem repeats)
+		$back = 0;
+		for($j=$i-5;$j<$i+7;$j++) {
+
+			$rem = '';
+
+			$delta_j2 = $all[$j+1][1]-$all[$j][1];
+			if ($delta_j2 < 0) {
+				$back = 1;
+				$rem = "back jump ";
+				}
+
+			$line = $j;
+
+			# flag current pos
+			if ($j == $i) {
+				$rem .= "***";
+				}
+
+			# show line	
+			for($d=0;$d<4;$d++) {
+				$line .= "\t$all[$j][$d]";
+				}
+			print "$line\t$delta_j2\t$rem\n";
+			}
+		print "\n";	
+
+		# only validate further if there is no back jump
+		if ($back ==0) {
+			&compare;
+			}
+
+		}	
+	
+		#}
+
+	}
+
+
+
+sub compare {
+
+# extract region of insertion	
+$be1 = $all[$i][0]-$flank;
+$en1 = $all[$i+1][0]+$flank;
+
+$be2 = $all[$i][1]-$flank;
+$en2 = $all[$i+1][1]+$flank;
+
+
+$l1 = $en1-$be1;
+$l2 = $en2-$be2;
+
+
+# make segment names 
+$val1 = sprintf("%08d",$be1);
+$val2 = sprintf("%08d",$be2);
+$pap_count++;
+$pap_val = sprintf("%03d",$pap_count);
+$out1 = "PAP$pap_val\_S1_$chr1\_$val1";
+$out2 = "PAP$pap_val\_S2_$chr2\_$val2";
+
+# shorten names
+$out1 =~ s/_[Vv]3\S+inv_/_/;
+$out2 =~ s/_[Vv]3\S+inv_/_/;
+
+print "\n++++ assemble segments: ++++\n" ;
+print "$chr1\t$be1\t$en1\t$l1\t==> $out1\n" ;
+print "$chr2\t$be2\t$en2\t$l2\t==> $out2\n" ;
+
+
+$sub1 = substr($dna1,$be1,$l1);
+($fasta) = &mk_fasta($sub1);
+open(OUT,">$out1");
+print OUT ">$out1\n$fasta\n";
+close(OUT);
+
+$sub2 = substr($dna2,$be2,$l2);
+($fasta) = &mk_fasta($sub2);
+open(OUT,">$out2");
+print OUT ">$out2\n$fasta\n";
+close(OUT);
+
+# run dot plot for visual inspection 
+print "dot2 $out1 $out2\n";
+$outfile = "$out1\.dot";
+`dotter -b $outfile $out2 $out1`;
+`dotter -l $outfile $out2 $out1`;
+
+# ask if the insertion looks real, if yes, run smith waterman alignment
+print "keep? ";
+chomp($keep = <STDIN>);
+
+if ($keep eq 'n') {
+	`rm $outfile $out1 $out2`;
+	} else {
+	$outfile = "$out1\__x__$out2.pair";	
+	print LOG "$out1 $out2\n";
+
+	&extract_ins;
+	#`rm $outfile`;	
+	}	
+
+}	
+
+
+
+
+# align with smith waterman and extract insertions in sequence2
+sub extract_ins {
+
+print "align with water\n";
+
+$outfile = "$out1\__x__$out2.pair";
+`water $out1 $out2 -gapopen=50 -gapextend=0.1 -outfile=$outfile`;
+
+print "extract insertions from $outfile\n";
+print "extract insertions from $out2\n";
+
+($seq1,$seq2,$beg1,$end1,$beg2,$end2) = &sequences_from_pair($outfile);
+@seq1 = split('',$seq1);
+@seq2 = split('',$seq2);
+
+print "aligned region: $beg1-$end1\t$beg2-$end2<n";
+
+$go1 =0;
+$ins = '';
+@ins = ();
+
+# memorize absolute position on seq2
+$abs_pos2 = $beg2;
+
+for($s=0;$s<@seq1;$s++) {
+
+	#print "$s\t$seq1[$s]\t$seq2[$s]\n";
+
+	# keep track of absolute position in seq2
+	if ($seq2[$s] ne '-') {
+		$abs_pos2++;
+		}
+
+        # find start of indel in seq2
+        if (($seq1[$s] eq '-') && ($seq2[$s] ne '-')) {
+
+                if ($go1 ==0) {
+                        $beg_ins = $abs_pos2;
+                        print "BEG INS: $beg_ins \n";
+                        $go1 =1;
+                        }
+                $ins .= $seq2[$s];
+                #print "$i\t$seq1[$i]\t$seq2[$i]\t$ins1\n";
+                }
+
+
+
+        if (($seq1[$s] ne '-') && ($seq2[$s] ne '-') && ($go1 ==1)) {
+
+                $end_ins = $abs_pos2-1;
+                $len_ins = length($ins);
+
+		# show start and end of insertion just for control
+		$seq_beg = substr($ins,0,8);
+		$seq_end = substr($ins,($len_ins-8),8);
+
+		print "END INS: $beg_ins\t- $end_ins\tLEN= $len_ins\t$seq_beg ... $seq_end\n";
+
+                $len{$ins} = $len_ins;
+
+                $beg_abs = $be2+$beg_ins;
+                $end_abs = $be2+$end_ins;
+
+                # select insertion by size
+                if ($len_ins > $min_ins) {
+
+			$pos_ins{$ins} = "$beg_abs-$end_abs";
+                        print "INSERTION\t$beg_ins-$end_ins\t$len_ins\n";
+                        push(@ins,$ins);
+                        }
+
+                $ins = '';
+                $go1 =0;
+                }
+
+        }
+
+# keep longest insertion
+$max_len = 0;
+$max_ins = '';
+
+foreach $ins (@ins) {
+        $len_ins = length($ins);
+        if ($len_ins > $max_len) {
+                $max_len = $len_ins;
+                $max_ins = $ins;
+                }
+        }
+
+# write fasta for longest insertion, if there is one	
+if ($max_len > 0) {
+
+	$out = "$out2\_$ext";
+	$pos = $pos_ins{$max_ins};
+	open(OUT,">$out");
+	# remove terminal 5 bp to avoid bad LTR alignment because of TSD
+	$len_max_ins = length($max_ins);
+	$sub2 = substr($max_ins,5,($len_max_ins-5));
+	$max_ins = $sub2;
+
+	($fasta) = &mk_fasta($max_ins);
+	print OUT ">$out $chr2 $pos\n$fasta";
+	close(OUT);
+
+	print "\nwrote $out\t$chr2 $pos\t$max_len ************\n\n";
+	print ANN "$pos\t$out;for;-;TSD;\n";
+	}
+
+
+#`rm $outfile`;
+
+}
+

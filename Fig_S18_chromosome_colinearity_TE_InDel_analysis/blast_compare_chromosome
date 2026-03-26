@@ -1,0 +1,270 @@
+#!/usr/bin/perl
+
+# adjust path to where you put Biomodule.pm
+use lib '/home/wicker/data/WICKERsoft/';
+use Biomodule;
+
+# copy blast matrix from whereever you store it
+`cp /home/wicker/data/WICKERsoft/BLOSUM62 .`;
+
+if (@ARGV < 5) {
+	print "1.arg = chromosome segment 1\n";
+	print "2.arg = chromosome segment 2\n";
+	print "3.arg = size of segment for blasts\n";
+	print "4.arg = sliding step\n";
+	print "5.arg = range of comparison in Mb (e.g. 0-100 for large chromosomes)\n";
+	print "6.arg = -R to write log file useful for R\n";
+	print "set low-complexity filter to F in line 33 if speed is not important\n";
+	exit;
+	}
+
+# set directory where blast-able databases are stored 	
+$db_dir = "/home/wicker/data/databases/blast_databases/";
+
+
+$chr1 = $ARGV[0];
+$chr2 = $ARGV[1];
+$slice = $ARGV[2];
+$step = $ARGV[3];
+$blast = "blastn";
+
+$min_len = int($slice/3);
+$min_sim = 80;
+$filter = "T";
+
+($min,$max) = ($ARGV[4] =~ /^(\d+)-(\d+)/);
+$min *= 1000000;
+$max *= 1000000;
+
+
+# check if database exists
+&check_db;
+
+
+
+# start log file 
+$log2 = "log_chr_comp_$chr1\__x__$chr2\.tab";
+open(LOG2,">$log2");
+
+
+# start log for R plots, if requested
+if ($ARGV[5] eq '-R') {
+$log1 = "log_chr_comp_$chr1\__x__$chr2\.R";
+open(LOG1,">$log1");
+print LOG1 "chr1\tchr2\tchr_ID1\tchr_ID2\tpos1\tpos2\tdiff\tsim\t\tTI\tTV\tori\thits\n";
+}
+
+
+
+print "get chromosome sizes\n";
+($dna1) = &pure_sequence($chr1);
+($dna2) = &pure_sequence($chr2);
+$len1 = length($dna1);
+$len2 = length($dna2);
+
+if ($max > $len1) {
+	$max = $len1;
+	}
+
+print "$chr1\t$len1 bp\n";
+print "$chr2\t$len2 bp\n";
+print LOG2 "CHR1=$chr1 LEN1=$len1\tCHR2=$chr2\tLEN2=$len2\n";
+
+print "align $min-$max\n";
+
+
+# walk through seq1 in segments
+$go = 0;
+$count_no_hit = 0;
+$count_no_reg = 0;
+
+for($i=$min;$i<($max-$step);$i+=$step) {
+
+
+	$seq = substr($dna1,$i,$slice);
+	$count++;
+	$name = "$chr1\_x_$chr2\_$count";
+
+	$flag = "NO HIT";
+
+	$hit_yes = 0;
+
+	# call blast and blast parser	
+	&flow_sort;
+
+	print "$count\t$count_hit\t$name\t$flag \n";
+
+	}
+
+
+#`rm_db $chr2`;
+
+
+
+# +++++++++++++++++++++++++++++++++++++++
+# run blast of chr segment against the other chromosome
+sub flow_sort {
+
+$time_out++;
+
+# make temp fasta file for blast 
+($fasta) = &mk_fasta($seq);
+open(OUT,">$name");
+print OUT ">$name\n$fasta\n";
+close (OUT);
+
+$out = "$name\.blastn";
+$db = "$db_dir$chr2";
+
+`blastall -p $blast -d $db -i $name -F $filter -o $out`;
+
+
+# call blast parser
+(@test) = &parse_blast($out);
+
+# just look at the best hit
+($ID,$rem,$s_size) = ($test[0] =~ /ID=([^;]+);([^;]+);(\d+)/);
+(@data) = ($test[0] =~ /^(data=.+)$/gm);
+
+($Eval,$sim,$be1,$en1,$be2,$en2,$seq1,$seq2) = ($data[0] =~
+/data=[^;]+;([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+);([^;]+)/);
+
+$diff = abs($be1-$en1)+1;
+
+$pot = '';
+($pot) = ($Eval =~ /e-(\d+)/);
+
+if ($Eval eq '0.0') {
+        $pot = 100;
+        }
+
+if (($diff > $min_len) && ($sim >= $min_sim)) {
+
+	$count_hit++;
+	$ori = "for";
+	if (($be1 > $en1) || ($be2 > $en2)){
+		$ori = "rev";
+		}
+
+	# calculate absolute position of bet hits	
+	$beg1 = $be1+$i;
+	$end1 = $en1+$i;
+
+	# get TI/TV and indentity
+        &process_aln;
+
+	# write standard log 
+	print LOG2 "$name\t$beg1\t$be2\t$diff\t$sim%\t$ori\t$len_aln\t$ti\t$tv\t$date\t$std\n";
+	$flag = "$beg1\t$be2\t$diff\t$sim%\t$ori\t$len_aln\t$ti\t$tv\t$date\t$std";
+
+	# write R-plot log
+        print LOG1 "$chr1\t$chr2\t$chr_ID1\t$chr_ID2\t$i\t$be2\t$len_aln\t$sim%\t$ti\t$tv\t$ori\t$count_hit\n";
+
+	$hit_yes = 1;
+
+	} 
+
+`rm $out`;
+`rm $name`;
+
+} # -----------------------------------------------
+
+
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# calc precise identity
+# .... and extract TI+TV from alignments for optional molecular dating
+sub process_aln {
+
+# replace lower case letters from low-complexity filtering 
+$seq1 =~ tr/a-z/A-Z/;
+$seq2 =~ tr/a-z/A-Z/;
+
+@seq1 = split('',$seq1);
+@seq2 = split('',$seq2);
+
+$len = @seq1;
+$len_aln = 0;
+$ti = 0;
+$tv = 0;
+$id = 0;
+
+# loop thru alignment and evaluate substitutions 
+for ($a =0;$a<$len;$a++){
+
+                if (($seq1[$a] ne '-') && ($seq2[$a] ne '-')&&($seq1[$a] ne 'N') && ($seq2[$a] ne 'N')){
+                        $len_aln++;
+                        if ($seq1[$a] eq $seq2[$a]){
+                                $id++;
+                                } else {
+                                # determine substitition kind (transition or transversion)
+                                &subst_matrix;
+                                $SNP[$a]++;
+                                }
+                        }
+
+                }
+
+		
+# calc identity of alignment ++++++++++++++++		
+if ($len_aln > 0){
+	$sim = $id/$len_aln*100;
+	$sim = sprintf("%.02f",$sim);
+	} else {
+        $sim = "0";
+        }
+
+# date alignment (usually not used) +++++++++++++++++	
+if ($len_aln > 0){
+	(@date) = &seq2date($len_aln,$ti,$tv);
+	$date = (int($date[0]/1000))/1000;
+	$std = (int($date[1]/1000))/1000;
+	}
+
+
+}
+
+
+
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+sub subst_matrix {
+
+if (($seq1[$a] eq 'A') && ($seq2[$a] eq 'G')) { $ti++; }
+elsif (($seq1[$a] eq 'G') && ($seq2[$a] eq 'A')) { $ti++; }
+elsif (($seq1[$a] eq 'C') && ($seq2[$a] eq 'T')) { $ti++; }
+elsif (($seq1[$a] eq 'T') && ($seq2[$a] eq 'C')) { $ti++; }
+else { $tv++; }
+
+} # -------------------------------------------------------------------
+
+
+
+
+
+#check if blast database exists
+sub check_db {
+	
+`ls $db_dir > templist`;
+
+open (IN, "templist");
+$exist = 0;
+while (<IN>){
+        ($ba) = /^($chr2)\./;
+        if ($ba) {
+                $exist = 1;
+                }
+        }
+close (IN);
+`rm templist`;
+
+if ($exist ==1) {
+        print "\ndatabase exists for $chr2\n\n";
+        }
+if ($exist ==0) {
+        print "\nmake blast-able database $chr2\n\n";
+	`formatdb -i $chr2 -p F`;
+	`mv $chr2.* $db_dir`;
+        }
+
+}

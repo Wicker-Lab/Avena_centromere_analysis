@@ -1,0 +1,818 @@
+#!/usr/bin/perl
+
+
+use lib '/home/wicker/data/WICKERsoft/';
+use Tk;
+use Biomodule;
+
+if (@ARGV <4) {
+	print "1.= output of blast_compare_chromosome\n";
+	print "2.= annotation 1 (does not have to exist, just type something)\n";
+	print "3.= annotation 2 (does not have to exist, just type something)\n";
+	print "4.= set id (e.g. Lo7_H2_cent)\n";
+	print "5.= -h (hard-code GUI size in case screen size is not detected correctly)\n";
+	exit;
+	}
+
+$chr_len = $ARGV[1];
+$set_ID = $ARGV[3];
+($set) = ($ARGV[0] =~ /_([^_]+)\.tab/);
+$set_ID2 = "$set_ID\_$set";
+
+# +++++++++++++++++ PART I +++++++++++++++++++++++++++
+# this part defines the visual layout
+# this is all Tk specific stuff 
+
+
+
+# determine screen resolution +++++++++++++++++++++++++++++++++++
+`xrandr > resolution_table`;
+open (IN,"resolution_table");
+$line = <IN>;
+close(IN);
+`rm resolution_table`;
+
+
+($x_axis,$y_axis) = ($line =~ /current\s+(\d+)\s+x\s+(\d+),/);
+
+# use info to create main window +++++++++++++++++++++++++++++++++
+
+$x_frame = $x_axis-10;
+
+if ($x_frame > 2000) {
+	$x_frame /=2;
+	}
+$y_frame = $y_axis-70;
+
+# hard code size in case of bad dimension recognition
+if ($ARGV[4] eq '-h') {
+        $x_frame = 1900;
+        $y_frame = 900;
+        }
+
+
+
+# create functional geometry variable
+$tempfr = "$x_frame x";
+$tempfr =~ s/ //;
+$geometry = "$tempfr$y_frame+10+0";
+print "geometry = $geometry\n";
+
+$mw = MainWindow -> new;
+$mw -> title ("WICKERsoft supersoftware");
+$mw -> geometry("$geometry");
+$buty = $y_frame-90;
+$canvas_x = $x_frame-40;
+
+
+# create canvas ++++++++++++++++++++++++++++++++++++
+
+$canvas = $mw -> Scrolled ('Canvas',
+        -scrollbars, 'se',
+        -width, $canvas_x,
+        -height, ($buty - 30),
+        -background, 'white',
+        ) -> place(-x => 10, -y => 10,);
+
+# loop to create buttons +++++++++++++++++++++++++++++
+
+# define arrays with labels and functions for buttons
+
+@buttons = ("process_file", "print", "exit", "write postscript");
+
+@b_comands = ("get_file", "print_landscape", "get_out", "write_ps");
+
+$b_count =0;
+$butx = 10;
+
+foreach (@buttons) {
+
+	$b_command = $b_comands[$b_count];
+	$b_text = $buttons[$b_count];
+
+	$mw -> Button (
+	        -text, "$b_text",
+	        -width, 17,
+		-pady, '-1',
+		-padx, '2',
+		# this exact format for the "-command" is obviously important:
+	        -command, \&$b_command
+	        ) -> place (-x => $butx, -y => $buty);
+
+	$b_count++;
+	$butx +=130;
+	&max_button;
+
+	} # end create buttons -------------------------
+
+
+
+
+# checks if buttons have to be moved to a new line
+
+sub max_button {
+if ($butx > ($x_frame-250)) {
+	$butx = 10;
+	$buty +=25;
+	}
+} # end max_button
+
+
+# loop to create check buttons ++++++++++++++++++++++++++++++++++++++++
+
+$butx +=20;
+&max_button;
+
+#@checkbutton = ("draw scale", "sequence heat map", "relative cvg");
+@cb_commands = ("scale_cb", "seq_cb", "cb_rel_cvg");
+
+for ($b=0;$b<@checkbutton;$b++) {
+
+	$cb_command = $cb_commands[$b];
+	$cb_text = $checkbutton[$b];
+
+	$$cb_command=0;
+
+	if ($b<2){
+		$$cb_command=0;
+		}
+
+	$mw -> Checkbutton (
+		-text, "$cb_text",
+		-variable, \$$cb_command,
+		) -> place(-x => ($butx), -y => ($buty));
+	
+	$butx +=180;
+	&max_button;
+	} # end create ckeck buttons ----------------------------------
+
+
+
+# loop to create data entries +++++++++++++++++++++++++++++++++++++++++++
+
+@entry = qw(ps_name chr_dist window_mb x_zoom y_zoom scale_unit shift1 shift2 max_dist age_window divg_cut age_zoom comp_step);
+
+$chr_dist = 150;
+$window_mb = 1;
+$x_zoom = 1200;
+$y_zoom = 1;
+$frac = 1;
+$scale_unit = 50;
+$shift1 = 0;
+$shift2 = 0;
+$max_dist = 40000;
+$age_window = 200;
+$divg_cut = 97;
+$age_zoom = 1;
+$comp_step = 50;
+
+
+$ps_name = "chr_compi_$set_ID2";
+
+for ($b=0;$b<@entry;$b++) {
+	
+	$label = $entry[$b];
+	$entry = $entry[$b];
+
+	$mw -> Label (
+		-text, "$label",
+		-width, 11,
+		) -> place (-x => ($butx+20), -y => $buty+5);
+
+	$mw -> Entry (
+		-textvariable, \$$entry,
+		-relief, 'sunken',
+		-background, 'white',
+		-width => 11, 
+		) -> place(-x => ($butx+120), -y => ($buty+3));
+
+	$butx +=200;
+	&max_button;
+	} # end create data entries --------------------------------------
+
+
+MainLoop;
+
+# +++++++++++++ PART II +++++++++++++++++++++++++++++++++
+# subroutines that are called by the buttons 
+
+
+# command routines for generic buttons ++++++++++++++++++
+
+sub get_out {
+	exit;
+	}
+
+sub get_file {
+&display;
+}
+
+sub zoom_in {
+$zoom = int($zoom/2);
+&display;
+}
+
+sub zoom_out {
+$zoom = int($zoom*2.5);
+&display;
+}
+
+
+
+# +++++++++++ main subroutine - display annotation ++++++++++++++++++++++++
+
+sub display {
+
+$canvas -> delete("all");
+
+
+# define base positions
+$y_base = 50;
+$x_base = 150;
+$font = "{arial 12}";
+$count_file =0;
+$chr_wide = 10;
+
+&mk_color_spec;
+
+
+# loop thru file and extract blast hits pos 
+# collect all pos in 2D array
+$first = 1;
+@all = ();
+$count=0;
+open (IN, "<$ARGV[0]");
+while (<IN>){
+
+        ($p) = /^(\S.+)$/;
+        if (($p) && ($first ==0)) {
+
+                $p =~ s/\s+/ /g;
+                @data = split(' ',$p);
+
+                $n1 = $data[1]+$shift1;
+                $n2 = $data[2]+$shift2;
+                $sim = $data[4];
+                $ori = $data[5];
+		$aln = $data[3];
+		$ti = $data[7];
+		$tv = $data[8];
+
+		$flag = 1;
+
+                $sim =~ s/%//;
+
+                $all[$count][0] = $n1;
+                $all[$count][1] = $n2;
+                $all[$count][2] = $sim;
+                $all[$count][3] = $ori;
+		$all[$count][4] = $flag;
+		$all[$count][5] = $aln;
+		$all[$count][6] = $ti;
+		$all[$count][7] = $tv;
+
+                $count++;
+                }
+
+        # get info from header
+        ($ch1,$l1,$ch2,$l2) = /CHR1=(\S+)\s+LEN1=(\d+)\s+CHR2=(\S+)\s+LEN2=(\d+)/;
+        if (($ch1) && ($first ==1)) {
+                $chr1 = $ch1;
+                $len1 = $l1;
+                $chr2 = $ch2;
+                $len2 = $l2;
+                ($dna1) = &pure_sequence($chr1);
+                ($dna2) = &pure_sequence($chr2);
+                print "$chr1\t$len1\n";
+                print "$chr2\t$len2\n";
+                }
+
+        $first =0;
+
+        }
+
+close(IN);
+
+print "total:\t$count\n"; 
+
+# display chromosomes and labels +++++++++++++++++
+$x1 = $x_base;
+$x2 = $x_base+int($len1/$x_zoom);
+$x3 = $x_base;
+$x4 = $x_base+int($len2/$x_zoom);
+$y1 = $y_base;
+$y2 = $y_base-$chr_wide;
+$y3 = $y_base+$chr_dist-10;
+$y4 = $y3+$chr_wide;
+
+$fill2 = "gray60";
+$fill1 = "black";
+&TkBox($x1,$y1,$x2,$y2,$fill1,$fill2);
+&TkBox($x3,$y3,$x4,$y4,$fill1,$fill2);
+
+                # make label
+$lab = "$chr1";
+&TkText($x1-20,$y1,$lab,'ne','black',$font);
+$lab = "$chr2";
+&TkText($x1-20,$y3,$lab,'ne','black',$font);
+
+# loop thru data and flag non colinear hits 
+# .. by making running avg over 10 values and flagging those that are way off
+$window = 30; 
+for($i=0;$i<($count-$window);$i++) {
+
+	# flag generally all hits that are reverse
+        if ($all[$i][3] eq 'rev') {
+                $all[$i][4] = 0;
+                }
+
+	# display current line just for control
+	$line = $i;
+	for($j=0;$j<5;$j++) {
+		$line .= "\t$all[$i][$j]";
+		}
+	#print "$line ***********\n";	
+
+
+	# collect values from chr 2 for window
+	@win = ();
+	$c = 0;
+	for($j=$i;$j<($i+$window);$j++) {
+		$win[$c][1] = $all[$j][1];
+		$win[$c][0] = $j;
+		$win[$c][2] = '';
+		$c++;
+		}
+
+
+	# calc median position of pos2 in window 	
+	@sort = sort{$a->[1] <=> $b->[1]}(@win);
+	@win = @sort;
+
+	$mid = int($window/2);
+	$median = int($win[$mid][1]/1000);
+
+        # flag all hits that are far off the median
+        for($j=0;$j<$c;$j++) {
+
+                $rem = '';
+
+                $delta = abs($win[$j][1]-$median*1000);
+
+                # if value is far from median, flad the entry
+                if ($delta > $max_dist) {
+                        $val = $win[$j][0];
+                        $all[$val][4] = 0;
+                        $rem = "*** ";
+                        $win[$j][2] = "*** ";
+                        }
+
+                if ($j==$mid) {
+                        $rem .= $median;
+                        }
+                }
+
+
+
+	}	
+
+
+# make new array only with clean hits
+@clean = ();
+$count2 = 0;
+
+for($i=0;$i<$count;$i++) {
+
+        if ($all[$i][4] ==1) {
+                for($j=0;$j<8;$j++) {
+                        $clean[$count2][$j] = $all[$i][$j];
+                        }
+                $count2++;
+                }
+        }
+
+print "clean: $count2 entries\n";
+
+@all = @clean;
+
+
+
+
+
+# display blast hits, if they were not flagged as non-colinear in the previous step
+for($i=0;$i<$count2;$i++) {
+
+	$flag = $all[$i][4];
+
+	$be1 = $all[$i][0];
+	$be2 = $all[$i][1];
+
+	$en1 = $be1+1000;
+	$en2 = $be2+1000;
+
+	$ori = $all[$i][3];
+	$sim = $all[$i][2];
+
+		
+        $x1 = $x_base+int($be1/$x_zoom);
+        $x2 = $x_base+int($en1/$x_zoom);
+	$x3 = $x_base+int($be2/$x_zoom);
+        $x4 = $x_base+int($en2/$x_zoom);
+        $y1 = $y_base;
+        $y1 = $y_base+$chr_wide;
+        $y2 = $y_base+$chr_dist-20;
+
+	$fill = "gray60";
+
+	#&TkLine($x1,$y1,$x3,$y2);	
+
+	# display connection in shades of gray
+	# adjust scale to 0-50, usning divg_contrast
+
+	$sim2 = $sim-$divg_cut;
+	if ($sim2 < 0) { $sim2 = 0; }
+	$shade1 = $sim2*40/(100-$divg_cut);
+	$shade2 = 90-$shade1;
+	$val = int($shade2);
+
+	print "sim= $sim\t$sim2\t$shade1\t$shade2\t==>$val\n";
+
+	$fill = "gray$val";
+
+	&TkPoly($x1,$y1,$x3,$y2,$x4,$y2,$x2,$y1,$fill,$fill);
+
+	# display connection in shades of gray
+	$gray = (100-$sim)*40;
+	if ($gray > 90) {
+	$gray = 90;
+	}
+	$fill = "gray$gray";
+
+
+	}
+
+
+$count_file++;
+
+# make scales
+$up = 1;
+$len_chr = $len1;
+$shift = $shift1;
+$y_scale = $y_base-20;
+&x_scale;
+
+# make scales
+$up = -1;
+$len_chr = $len2;
+$shift = $shift2;
+$y_scale = $y_base+$chr_dist+10;
+&x_scale;
+
+# diplay annotations 
+$anno = $ARGV[1];
+$shift = $shift1; 
+$y1 = $y_base-$chr_wide;
+$up =1;
+&show_anno;
+
+$anno = $ARGV[2];
+$shift = $shift2;
+$up = -1;
+$y1 = $y_base+$chr_dist-20;
+&show_anno;
+
+# make age scale
+$age_step = 20000/$age_zoom;
+for($i=0;$i<500000;$i+=20000) {
+
+	$x1 = $x_base;
+	$x2 = $x_base+int($len1/$x_zoom);
+	$y1 = $y_base-100-int($i*$age_zoom/1000);
+	
+	$mya = sprintf("%.03f",($i/1000000));
+
+	$fill = "gray70";	
+	&TkLine($x1,$y1,$x2,$y1,$fill);	
+	&TkText($x1-10,$y1,$mya,'e','black');
+	
+	if ($i==100000) {
+		&TkLine($x1,$y1,$x2,$y1,'black');
+		}
+	
+
+	}
+
+
+# make age plot in sliding winodws
+$log2 = "chr_comp_date_log_$age_window\_$set_ID\_$set_ID2";
+open(LOG2,">$log2");
+print LOG2 "pos1\tpos2\ttype\tset_ID\tset_ID2\taln\tTI\tTV\tage\tSTD\tflag\tID\n";
+
+$time = 0;
+for($i=0;$i<($count2-$age_window*2);$i++) {
+
+	$sum_aln = 0;
+	$TI = 0;
+	$TV = 0;
+
+	for($j=$i;$j<$i+$age_window;$j++) {
+		$sum_aln += $all[$j][5];
+		$TI += $all[$j][6];
+		$TV += $all[$j][7];
+		}
+
+	($age,$std) = &seq2date($sum_aln,$TI,$TV);
+
+	$mya = $age/1000000;
+	$STD = $std/1000000;
+	$mya = sprintf("%.04f",$mya);
+	$STD = sprintf("%.04f",$STD);
+
+	if ($time >= $comp_step) {
+
+		print LOG2 "$all[$j][0]\t$all[$j][1]\tdivg\t$set_ID\t$set_ID2\t$sum_aln\t$TI\t$TV\t$mya\t$STD\t$set\tNA\n";
+		$time = 0;
+		}
+	$time++;
+
+        $be1 = $all[$i][0];
+
+	$x1 = $x_base+int($be1/$x_zoom);
+	$y1 = $y_base-100-int($age*$age_zoom/1000);
+	$y2 = $y1+int($std*$age_zoom/1000);
+	$y3 = $y1-int($std*$age_zoom/1000);
+
+	$fill = "gray70";
+	&TkLine($x1,$y2,$x1,$y3,$fill);
+
+	$fill = "blue";
+        &TkLine($x1-1,$y1,$x1+1,$y1,$fill);
+
+
+        }
+
+close(LOG2);
+print "wrote $log2\n";
+
+
+
+
+sub show_anno {
+
+$y2 = $y1+$chr_wide*2;
+$y3 = $y1-70*$up;
+
+open (IN1,"<$anno");
+while (<IN1> ) {
+        ($be,$en,$code,$fam,$sf,$rem) = /^(\d+)-(\d+)\s+([^_]+)_([^;]+);[^;]+;([^;]+);([^;]+)/;
+        if ($be) {
+
+		# check for insertion age
+		$lab = "$code\_$fam\n$rem";
+		($age,$std) = /age=([\d\.]+)\s+std=([\d\.]+);/;
+		if ($age) {
+			$age = sprintf("%.03f",$age);
+                	$std = sprintf("%.03f",$std);
+			$lab = "$fam\n$age\n+-$std";	
+			}
+		if (!$age) {
+			$lab = "$code\_$fam\n$rem";
+			}
+	
+		$x1 = $x_base+int(($be+$shift)/$x_zoom);
+		$x2 = $x_base+int(($en+$shift)/$x_zoom);
+
+		$fill = "orange";
+		#if (($fam =~ /^[AC]/) || ($sf eq 'Cent')) {
+		if ($sf eq 'Cent') {
+			$fill = "red";
+			}
+
+		# flag fragments
+		$fill = "red";
+		if ($rem eq 'Insertion') {
+			$fill = "blue";
+			}
+		if ($rem eq 'Deletion') {
+                        $fill = "red";
+			$lab = $rem;
+                        }
+
+
+		&TkBox($x1,$y1,$x2,$y2,$fill,$fill);
+
+		&TkText($x1,$y3,$lab,'n','black');
+
+
+		print "$be,$en,$code,$fam,$sf,$rem\t$age,$std\n";
+
+                }
+
+
+        }
+
+close(IN1);
+
+}
+
+
+
+sub x_scale {
+
+$anchor = "s";
+if ($up == -1) {
+	$anchor = "n";
+	}
+
+
+$unit_bp = $scale_unit*1000;
+for($i=0;$i<$len_chr;$i+=$unit_bp) {
+        $val = ($i-$shift)/1000;
+        $x1 = $x_base+int($i/$x_zoom);
+        $y1 = $y_scale;
+        $y2 = $y1-5*$up;
+        &TkLine($x1,$y1,$x1,$y2);
+        &TkText($x1,$y2-(2*$up),$val,$anchor);
+        }
+
+# baseline
+$x1 = $x_base;
+#$x2 = $x_base+int($max/$x_zoom);
+&TkLine($x1,$y1,$x2,$y1);
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+$canvas -> configure (-scrollregion => [$canvas -> bbox("all")]);
+
+} # end display annotation -------------------------------------------------
+
+# make hash for chromosome are colors
+
+sub TE_color {
+
+%TE_color = (
+
+'1L' => '0',
+'1S' => '8',
+'2L' => '14',
+'2S' => '23',
+'3L' => '28',
+'3S' => '31',
+'4L' => '35',
+'4S' => '50',
+'5L' => '70',
+'5S' => '82',
+'6L' => '91',
+'6S' => '95',
+'7L' => '105',
+'7S' => '107',
+
+
+
+
+);
+
+
+} 
+
+
+
+
+# make ifull color spectrum in hexadec code
+sub mk_color_spec {
+
+@hexa = ();
+
+for($i=0;$i<112;$i++) {
+
+        # calculate color code in hexadec system +++++
+
+        $modulo = $i%16;
+	$down = 15-$modulo;
+        $integer = int($i/16);
+        $hexval = sprintf("%x", $modulo);
+        $hexval =~ tr/a-z/A-Z/;
+	$hexval2 = sprintf("%x", $down);
+	$hexval2 =~ tr/a-z/A-Z/;
+
+	# go from black to red
+        if ($integer == 0) {
+        $red = "$hexval$hexval";
+        $green = "00";
+        $blue = "00";
+        }
+
+        # go from red to yellow	
+        if ($integer == 1) {
+        $red = "FF";
+        $green = "$hexval$hexval";
+        $blue = "00";
+        }
+
+        # go from yellow to green 
+        if ($integer == 2) {
+        $red = "$hexval2$hexval2";
+        $green = "FF";
+        $blue = "00";
+        }	
+
+        # go from green to turquoise
+        if ($integer == 3) {
+        $red = "00";
+        $green = "FF";
+        $blue = "$hexval$hexval";
+        }
+
+	# go from turquoise to blue
+        if ($integer == 4) {
+        $red =  "00";
+        $green = "$hexval2$hexval2";
+        $blue = "FF";
+        }
+
+        # go from blue to purple
+        if ($integer == 5) {
+        $red =  "$hexval$hexval";
+        $green = "00";
+        $blue = "FF";
+        }
+
+	# go from black to white
+        if ($integer == 6) {
+        $red =  "$hexval$hexval";
+        $green = "$hexval$hexval";
+        $blue = "$hexval$hexval";
+        }
+
+
+	$color = "#$red$green$blue";
+
+        #print "i=$i\tint = $integer\thexval = $hexval\tdown = $hexval2\tcolor = $color\n";
+
+        push(@hexa,$color);
+        }
+
+} 
+
+
+
+
+
+
+# subroutine save postscript ++++++++++++++++++++++++++++++
+
+sub write_ps {
+
+$ps_out = "$ps_name.ps";
+
+&write_ps_to_jpg($ps_name);
+
+}
+
+
+sub no_use {
+
+$canvas -> postscript(
+        -file, "$ps_out",
+        -rotate,1,
+        -pageheight, '500',
+        -pagewidth, '750'
+        );
+                                                                                
+} # end save postscript -----------------------------------
+
+
+
+
+
+# subroutine print screen +++++++++++++++++++++++++++++++++
+
+sub print_landscape {
+
+$ps_out = "print.ps";
+
+$canvas -> postscript(
+        -file, "$ps_out",
+        -rotate,1,
+        -pageheight, '500',
+        -pagewidth, '750'
+        );
+
+`lp $ps_out`;
+#`rm $ps_out`;
+
+} # end print screen -------------------------------------
+
+
+

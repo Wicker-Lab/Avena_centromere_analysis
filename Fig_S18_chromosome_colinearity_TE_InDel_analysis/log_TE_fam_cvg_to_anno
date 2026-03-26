@@ -1,0 +1,140 @@
+#!/usr/bin/perl
+
+use lib '/home/wicker/data/WICKERsoft/';
+use Biomodule;
+
+
+if(@ARGV < 2) {
+	print "1.= log_TE_fam_cvg_insertions_INS\n";
+	print "2.= positions_colin_segment\n";
+	exit;
+	}
+
+@cent = qw(RLG_Beth RLG_Cereba RLG_Ava);
+
+$out4 = "annotations_Asat_Ains_colin_loci_for_R";
+open(OUT4,">$out4");
+print OUT4 "locus\tbe\ten\tInDel\tTE_type\tfam\n";
+
+
+# get names and Mb positions from positions_colin_segment
+open(IN2,"$ARGV[1]");
+while(<IN2>) {
+        ($loc,$p) = /^(\S+)\s+(\d+)-\d+/;
+        if ($loc) {
+                $mb_pos{$spe} = $p*1000000;
+		$mb_pos = $p*1000000;
+		($chr) = ($loc =~ /^(\S+)_cent/);
+		($spe) = ($loc =~ /^([^_]+)/);
+		$count_entry = 0;
+                print "$loc\t$chr\t$spe\t$mb_pos --------------------\n";
+		&process_loc;
+                }
+        }
+
+close(IN);
+
+print "wrote $out4\n";
+
+
+
+sub process_loc {
+
+
+$out1 = "annotation_InDels_$loc";
+open(OUT1,">$out1");
+
+$out3 = "annotation_InDels_$loc\_abs_chr_positions";
+open(OUT3,">$out3");
+
+$count_1 = 1;
+
+open(IN,"$ARGV[0]");
+while(<IN>) {
+	($p) = /^(\S+$loc\_.+)$/;
+	if ($p) {
+		$p =~ s/\s+/ /g;
+                @data = split(' ',$p);
+
+                $id = $data[0];
+                $fam = $data[1];
+		$rem = $data[6];
+                $ori = $data[-1];
+		$flag = $data[7];
+		$hit_count = $data[8];
+		$rem =~ s/ins/Insertion/;
+		$rem =~ s/frag/Deletion/;
+
+		# flaf centromere specific elements
+		$sf = "other";
+		if ($fam ~~ @cent) {
+			$sf = "Cent";
+			}
+
+		# set comment
+		if ($flag ==1) {
+			$rem = "Insertion";
+			}
+		if ($flag ==0) {
+                        $rem = "Deletion";
+                        }	
+
+		# get start and end pos of segment
+		&get_DE;
+		#print;
+		#print "##$id\t$fam\t$be_seg\t$en_seg\t$sf\t$rem\n\n";
+
+		# make annotations just consider 1st entry for each segment
+		if ($hit_count ==1) {
+
+			# make comments for the different outputs
+			if ($rem eq 'Deletion') {
+                                $rem2 = "Deletion";
+				$fam2 = "Deletion";
+                                }
+                        if ($rem eq 'Insertion') {
+                                $rem2 = "Insertion $fam";
+				$fam2 = $fam;
+                                }
+
+			# make segment annotation       
+                        $pos = "$be_seg-$en_seg";
+                        print OUT1"$pos\t$fam2\_$count_1;$ori;$sf;$rem;\n";	
+
+
+			# make annotation with absolute chromosome positions
+			$be_abs += $be_seg+$mb_pos;
+			$en_abs += $en_seg+$mb_pos;
+				
+			print OUT3 "$chr\t$be_abs-$en_abs\t$spe\t$id\t$rem2\n";
+
+			# make annotation for R
+			print OUT4 "$loc\t$be_seg\t$en_seg\t$rem\t$sf\t$fam\n";
+			$count_entry++;
+			$count_1++;
+			}
+
+		}
+
+	}
+close(IN);
+print "wrote $out1\t$count_entry\n";
+print "wrote $out3\n";
+
+
+}
+
+sub get_DE {
+
+open (IN3, "<$id");
+while (<IN3>){
+
+	($b,$e) = /^>\S+.+\s+(\d+)-(\d+)/;
+	if ($b) {
+		$be_seg = $b;
+		$en_seg = $e;
+		}
+	}
+close(IN3);	
+}
+

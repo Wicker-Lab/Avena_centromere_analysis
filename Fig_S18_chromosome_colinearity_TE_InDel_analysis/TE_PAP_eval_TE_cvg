@@ -1,0 +1,358 @@
+#!/usr/bin/perl
+
+use lib '/home/wicker/data/WICKERsoft/';
+use Biomodule;
+
+
+if(@ARGV < 1) {
+	print "1.= output from png_blast_coverage_TE_all (e.g. log_TE_fam_cvg_insertions_INS)\n";
+	exit;
+	}
+
+$query = $ARGV[1];	
+
+# make list of all candidates
+@all_cand =();
+@all_class = ();
+foreach $file (<*_INS>) {
+	push(@all_cand,$file);
+	$count_cand++;
+	}
+print "total candidates: $count_cand\n";	
+
+# make log for unclassified candidates
+$log2 = "$ARGV[0]\_unclassified";
+open(LOG2,">$log2");
+
+$log = "$ARGV[0]\_eval";
+open(LOG,">$log");
+print LOG "Species\tlen_ins\tlen_tot\tcopies\trel\tnorm\tbp\tfam\n";
+
+$log3 = "$ARGV[0]\_eval_insertions";
+open(LOG3,">$log3");
+print LOG3 "Species\tlen_ins\tlen_tot\tcopies\trel\tnorm\tbp\tfam\n";
+
+
+# filter out proper insertions
+$first = 1;
+$flag = 1;
+$count = 0;
+@all = ();
+
+$sum_As = 0;
+$sum_Ai = 0;
+$count_As =0;
+$count_Ai =0;
+
+
+# get names of all TE families ++++++++++++++++++++++++++++
+$first = 1;
+@fam = ();
+open (IN, "<$ARGV[0]");
+while (<IN>){
+
+        ($p) = /^(\S.+)$/;
+        if (($p) && ($first ==0)) {
+
+                $p =~ s/\s+/ /g;
+                @data = split(' ',$p);
+                $fam = $data[1];
+		unless ($fam ~~ @fam) {
+			$count_fam++;
+			#print "TE $count_fam\t $fam\n";
+                        push(@fam,$fam);
+                        }
+		}
+	$first = 0;	
+	}
+close(IN);	
+print "TE families: $count_fam\n";
+
+
+# evaluate TE data for both species ++++++++++++++++++++
+$query = "Ains";
+&eval;
+
+$query = "Asat";
+&eval;
+
+print "wrote $log\n";
+print "wrote $log3\n";
+
+# make list of all unclassified candidates
+foreach $seq (@all_cand) {
+        unless ($seq ~~ @all_class) {
+                print LOG2 "$seq\n";
+                $count_unc++;
+                }
+        }
+print "wrote $log2\t$count_unc\n";
+
+
+
+
+
+
+
+
+# evaluate dataset for species +++++++++++++++++++++
+sub eval {
+
+# initiate length of families 
+foreach $fam (@fam) {
+	$sum_fam{$fam} = 0;
+	$count_fam{$fam} = 0;
+	}
+
+
+#  count insertions/deletions and total length of both
+$count_ins = 0;
+$count_del = 0;
+$len_ins = 0;
+$len_del = 0;
+@id = ();
+$len_tot = 0;
+$count_tot = 0;
+
+open (IN, "<$ARGV[0]");
+while (<IN>){
+
+        ($p) = /^(\S+_S._$query\_.+)$/;
+        if (($p) && ($first ==0)) {
+
+		$p =~ s/\s+/ /g;
+                @data = split(' ',$p);
+
+		$id = $data[0];
+		$len = $data[2];
+		$flag = $data[7];
+	
+
+		# process each indel only once (fisrt entry only)
+		unless ($id ~~ @id) {
+			push(@id,$id);
+			push(@all_class,$id);
+
+			#print "$id\t$len\t$flag\n";
+			# process deletions
+			if ($flag ==0) {
+				$count_del++;
+				$len_del+=$len;
+				}
+			# process insertions	
+                        if ($flag ==1) {
+                                $count_ins++;
+                                $len_ins+=$len;
+                                }
+			$len_tot += $len;
+			$count_tot++;	
+			} else {
+			#print "RED $id\t$len\n";
+			}	
+		}
+	}
+close(IN);
+
+print "$query\tins\t$count_ins\t$len_ins\n";
+print "$query\tdel\t$count_del\t$len_del\n";
+print "$query\ttot\t$count_tot\t$len_tot\n";
+
+$len_tot2 = $len_tot;
+
+# collect all entries classified as deletions for species query
+@all = ();
+$count = 0;
+$count_all=0;
+
+open (IN, "<$ARGV[0]");
+while (<IN>){
+
+	($p) = /^(\S+_S._$query\_.+)$/;
+	if (($p) && ($first ==0)) {
+
+		$p =~ s/\s+/ /g;
+		@data = split(' ',$p);
+
+		$id = $data[0];
+		$rem = $data[6];
+		$sum = $data[4];
+		$len = $data[2];
+		$fam = $data[1];
+		$flag = $data[7];
+
+		# collect all entries that were not flaged as insertions
+		if ($flag ==0) {
+
+			for($j=0;$j<=@data;$j++) {
+				$all[$count][$j] = $data[$j];
+				}
+			$count++;
+
+			}
+
+		$count_all++;
+		}
+	$first = 0;	
+	}
+
+print "\n$query\ttotal seg\t$count_all\n";	
+print "$query\tselected\t$count\n";
+
+
+# select copies and cumulative len of TE families
+$count_seq{$query} = 0;
+
+for($i=0;$i<$count;$i++) {
+
+	$id = $all[$i][0];
+	$fam = $all[$i][1];	
+	$len = $all[$i][2];
+	$len_hit = $all[$i][4];
+	$rem = $all[$i][7];
+	
+
+	unless($id ~~ @id) {
+		push(@id,$id);
+		$count_seg{$query}++;
+		$len_seg{$query}+=$len;
+		}
+	$sum_fam{$fam}+=$len_hit;
+	$count_fam{$fam}++;
+	#print "$i\t$id\t$fam\t$len\t$len2\t$rem\t$sum_fam{$fam}\n";
+
+	$id_old = $id;
+
+	}
+
+#$len_tot =$len_seg{$query};
+
+
+# make counts for copies and total sum for TE families 
+foreach $fam (@fam) {
+
+	$sum = $sum_fam{$fam};
+	if (!$sum) {
+		$sum = 0;
+		}
+
+	$cp = $count_fam{$fam};	
+	if (!$cp) {
+		$cp = 0;
+		}
+	$rel = sprintf("%.02f",($sum/$len_tot*100));
+	$rel2 = sprintf("%.02f",($sum/$len_del*100));
+	#print "$query\t$len_tot\t$cp\t$rel\t$rel2\t$sum\t$fam\n";
+	print LOG "$query\t$len_ins\t$len_del\t$cp\t$rel\t$rel2\t$sum\t$fam\n";
+	}
+
+
+
+# now do the same for candidates that were classified as insertions
+
+# collect all entries classified as insertions for species query
+@all = ();
+$count = 0;
+$count_all=0;
+
+open (IN, "<$ARGV[0]");
+while (<IN>){
+
+        ($p) = /^(\S+_S._$query\_.+)$/;
+        if (($p) && ($first ==0)) {
+
+                $p =~ s/\s+/ /g;
+                @data = split(' ',$p);
+
+                $id = $data[0];
+                $rem = $data[6];
+                $sum = $data[4];
+                $len = $data[2];
+                $fam = $data[1];
+                $flag = $data[7];
+		$hit_num = $data[8];
+
+                # collect all entries that were not flaged as insertions
+                if (($flag ==1) && ($hit_num ==1)) {
+
+                        for($j=0;$j<=@data;$j++) {
+                                $all[$count][$j] = $data[$j];
+                                }
+                        $count++;
+
+                        }
+
+                $count_all++;
+                }
+        $first = 0;
+        }
+close(IN);
+print "\ninsertions:$query\ttotal seg\t$count_all\n";
+print "\ninsertions:$query\tselected\t$count\n";
+
+
+# initiate length of families 
+foreach $fam (@fam) {
+        $sum_fam{$fam} = 0;
+        $count_fam{$fam} = 0;
+        }
+
+
+
+# select copies and cumulative len of TE families
+$count_seq{$query} = 0;
+
+for($i=0;$i<$count;$i++) {
+
+        $id = $all[$i][0];
+        $fam = $all[$i][1];
+        $len = $all[$i][2];
+        $len_hit = $all[$i][4];
+        $rem = $all[$i][7];
+
+
+        unless($id ~~ @id) {
+                push(@id,$id);
+                $count_seg{$query}++;
+                $len_seg{$query}+=$len;
+                }
+        $sum_fam{$fam}+=$len_hit;
+        $count_fam{$fam}++;
+        #print "$i\t$id\t$fam\t$len\t$len2\t$rem\t$sum_fam{$fam}\n";
+
+        $id_old = $id;
+
+        }
+
+
+
+# make counts for copies and total sum for TE families 
+foreach $fam (@fam) {
+
+        $sum = $sum_fam{$fam};
+        if (!$sum) {
+                $sum = 0;
+                }
+
+        $cp = $count_fam{$fam};
+        if (!$cp) {
+                $cp = 0;
+                }
+        $rel = sprintf("%.02f",($sum/$len_tot*100));
+        $rel2 = sprintf("%.02f",($sum/$len_ins*100));
+        #print "$query\t$len_tot\t$cp\t$rel\t$rel2\t$sum\t$fam\n";
+        print LOG3 "$query\t$len_ins\t$len_del\t$cp\t$rel\t$rel2\t$sum\t$fam\n";
+        }
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
