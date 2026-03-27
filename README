@@ -11,6 +11,7 @@ contains:
 A Poaceae specific subset of the TREP database including newly produced consensus sequences
 
 POA_TEdb_subset_TREP
+TE_consensus_sequences
 
 
 -------------> TE sequence fasta datasets 
